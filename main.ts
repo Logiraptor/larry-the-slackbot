@@ -148,11 +148,16 @@ function assignStandup() {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet()
     if (!spreadsheet) {
         Logger.log('No active spreadsheet')
-        return
+        throw new Error("No active spreadsheet")
     }
     const people = spreadsheet.getSheetByName('People')
     const peopleSource = new RealPeopleSource(people)
-    const client = new RealSlackClient('xoxp-2156835366-17517404263-369407915030-5013890144456d4dd5682afd459fab3b')
+    let slackToken = PropertiesService.getScriptProperties().getProperty('slack-token')
+    if (!slackToken) {
+        Logger.log('No slack token defined')
+        throw new Error("No slack token defined")
+    }
+    const client = new RealSlackClient(slackToken)
     const master = new StandupMaster(client, peopleSource)
     master.assignStandup()
 }
