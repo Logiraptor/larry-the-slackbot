@@ -166,7 +166,3 @@ function assignStandup() {
     const master = new StandupMaster(client, peopleSource);
     master.assignStandup();
 }
-
-// TODO: direct message people chosen
-// TODO: more helpful message
-// TODO: serve whiteboard content in slack
