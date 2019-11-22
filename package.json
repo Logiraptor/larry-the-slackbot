@@ -15,5 +15,11 @@
     "sinon-chai": "^3.0.0",
     "ts-node": "^6.0.1",
     "typescript": "^2.8.3"
+  },
+  "devDependencies": {
+    "ts-mocha": "^6.0.0"
+  },
+  "scripts": {
+    "test": "node_modules/.bin/ts-mocha -p tsconfig.json **/*.test.ts"
   }
 }

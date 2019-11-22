@@ -1,4 +1,4 @@
-import Sheet = GoogleAppsScript.Spreadsheet.Sheet
+import Sheet = GoogleAppsScript.Spreadsheet.Sheet;
 
 export interface Person {
     spreadsheetRow: number
@@ -22,24 +22,27 @@ export class RealPeopleSource implements PeopleDatabase {
     }
 
     listPeople(): Person[] {
-        const lastRow = this.sheet.getLastRow()
-        const range = this.sheet.getRange(2, 1, lastRow - 1, 2)
-        const values = range.getValues()
-        const people: Person[] = []
+        const lastRow = this.sheet.getLastRow();
+        const range = this.sheet.getRange(2, 1, lastRow - 1, 2);
+        const values = range.getValues();
+        const people: Person[] = [];
         for (let i = 0; i < values.length; i++) {
-            people.push({
+            const person: Person = {
                 spreadsheetRow: i + 2,
                 spreadsheetCol: 2,
                 email: values[i][0].toString(),
                 pickCount: parseInt(values[i][1].toString()),
-            })
+            };
+
+            people.push(person);
         }
-        return people
+
+        return people;
     }
 
     pick(person: Person): void {
-        let range = this.sheet.getRange(person.spreadsheetRow, person.spreadsheetCol)
-        range.setValue(person.pickCount + 1)
+        let range = this.sheet.getRange(person.spreadsheetRow, person.spreadsheetCol);
+        range.setValue(person.pickCount + 1);
     }
 }
 
@@ -53,10 +56,10 @@ export class RealSlackClient implements SlackClient {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
-        })
-        Logger.log(resp.getResponseCode())
-        Logger.log(resp.getContentText())
-        return JSON.parse(resp.getContentText()).user.id
+        });
+        Logger.log(resp.getResponseCode());
+        Logger.log(resp.getContentText());
+        return JSON.parse(resp.getContentText()).user.id;
     }
 
     postMessage(channel: string, text: string): void {
@@ -69,7 +72,7 @@ export class RealSlackClient implements SlackClient {
             payload: JSON.stringify({
                 channel, text,
             }),
-        })
+        });
     }
 }
 
@@ -78,22 +81,24 @@ export class StandupMaster {
     }
 
     assignStandup() {
-        const people = this.people.listPeople()
-        const masters = weightedChoice(2, people, person => 1 / person.pickCount)
-        const masterIds = masters.map(master => this.slack.getUserIdByEmail(master.email))
-        const userNameList = masterIds.map(id => `<@${id}>`).join(" and ")
-        this.slack.postMessage('C0A2QNDEX', `Hey ${userNameList}, you're scheduled to run standup this week!`)
+        const people = this.people.listPeople();
+        const masters = weightedChoice(2, people, person => 1 / person.pickCount);
+        const masterIds = masters.map(master => this.slack.getUserIdByEmail(master.email));
+        const userNameList = masterIds.map(id => `<@${id}>`).join(" and ");
+        this.slack.postMessage('C0A2QNDEX', `Hey ${userNameList}, you're scheduled to run standup this week!`);
         masters.forEach(master => {
             this.people.pick(master)
-        })
+        });
     }
 }
 
 function shuffle<T>(array: T[]) {
-    let copy = [], n = array.length, i
+    let copy = [];
+    let n = array.length;
+    let i;
+
     // While there remain elements to shuffle…
     while (n) {
-
         // Pick a remaining element…
         i = Math.floor(Math.random() * array.length);
 
@@ -111,57 +116,53 @@ function shuffle<T>(array: T[]) {
 // weightedChoice selects a random element from *elements*
 // with probability defined by the passed weightFunc
 function weightedChoice<T>(numElements: number, elements: T[], weightFunc: (element: T) => number) {
-    elements = shuffle(elements)
+    elements = shuffle(elements);
 
-    const weights: number[] = []
+    const weights: number[] = [];
     for (let i = 0; i < elements.length; i++) {
-        let weight = weightFunc(elements[i])
-        weights.push(weight)
+        let weight = weightFunc(elements[i]);
+        weights.push(weight);
     }
 
-    const results: T[] = []
+    const results: T[] = [];
     resultLoop: while (results.length < numElements) {
 
-        let sum = 0
+        let sum = 0;
         for (let i = 0; i < weights.length; i++) {
             sum += weights[i]
         }
 
-        const selection = Math.random() * sum
-        let cumulativeWeight = 0
+        const selection = Math.random() * sum;
+        let cumulativeWeight = 0;
         for (let i = 0; i < weights.length; i++) {
-            cumulativeWeight += weights[i]
+            cumulativeWeight += weights[i];
             if (cumulativeWeight >= selection) {
-                results.push(elements[i])
-                elements.splice(i, 1)
-                weights.splice(i, 1)
-                continue resultLoop
+                results.push(elements[i]);
+                elements.splice(i, 1);
+                weights.splice(i, 1);
+                continue resultLoop;
             }
         }
-        break
+        break;
     }
 
-    return results
+    return results;
 }
 
 function assignStandup() {
-    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet()
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     if (!spreadsheet) {
-        Logger.log('No active spreadsheet')
-        throw new Error("No active spreadsheet")
+        Logger.log('No active spreadsheet');
+        throw new Error("No active spreadsheet");
     }
-    const people = spreadsheet.getSheetByName('People')
-    const peopleSource = new RealPeopleSource(people)
-    let slackToken = PropertiesService.getScriptProperties().getProperty('slack-token')
+    const people = spreadsheet.getSheetByName('People');
+    const peopleSource = new RealPeopleSource(people);
+    let slackToken = PropertiesService.getScriptProperties().getProperty('slack-token');
     if (!slackToken) {
-        Logger.log('No slack token defined')
-        throw new Error("No slack token defined")
+        Logger.log('No slack token defined');
+        throw new Error("No slack token defined");
     }
-    const client = new RealSlackClient(slackToken)
-    const master = new StandupMaster(client, peopleSource)
-    master.assignStandup()
+    const client = new RealSlackClient(slackToken);
+    const master = new StandupMaster(client, peopleSource);
+    master.assignStandup();
 }
-
-// TODO: direct message people chosen
-// TODO: more helpful message
-// TODO: serve whiteboard content in slack

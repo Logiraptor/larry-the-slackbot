@@ -1,17 +1,27 @@
-import {PeopleSource, SlackClient, StandupMaster} from './main'
-import * as sinon from 'sinon'
+import {PeopleDatabase, SlackClient, StandupMaster} from "./main";
+import sinon = require("sinon");
+import { expect } from "chai";
 
 describe('StandupMaster', () => {
-    describe('#chooseAndNotifyStandupRunners', () => {
-        it('picks masters based on how frequently they have been picked', () => {
-            const slack: SlackClient = {
-                postMessage: sinon.spy()
-            }
-            const people: PeopleSource = {
-                listPeople: () => []
-            }
-            const standupMaster = new StandupMaster(slack, people)
-            standupMaster.chooseAndNotifyStandupRunners()
-        })
-    })
-})
+    specify('assignStandup', () => {
+        const postMessage = sinon.spy();
+        const pick = sinon.spy();
+
+        const slack: SlackClient = {
+            postMessage,
+            getUserIdByEmail: sinon.spy()
+        };
+
+        const people: PeopleDatabase = {
+            pick,
+            listPeople: () => [],
+        };
+
+        const standupMaster = new StandupMaster(slack, people);
+
+        standupMaster.assignStandup();
+
+        expect(postMessage.calledOnce).to.be.true;
+        expect(pick.notCalled).to.be.true;
+    });
+});
