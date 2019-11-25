@@ -8,8 +8,6 @@ tsc -p .
 
 ## Todos
 
-- Handle invalid slack user
-- Handle null value for "times picked"
 - Direct message people chosen
 - More helpful message
 - Serve whiteboard content in slack

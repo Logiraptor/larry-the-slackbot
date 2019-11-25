@@ -1,4 +1,7 @@
 import Sheet = GoogleAppsScript.Spreadsheet.Sheet;
+import URLFetchRequestOptions = GoogleAppsScript.URL_Fetch.URLFetchRequestOptions;
+import HTTPResponse = GoogleAppsScript.URL_Fetch.HTTPResponse;
+import Logger = GoogleAppsScript.Base.Logger;
 
 export interface Person {
     spreadsheetRow: number
@@ -7,17 +10,15 @@ export interface Person {
     pickCount: number
 }
 
-export interface PeopleDatabase {
+export interface PeopleSource {
     listPeople(): Person[]
+
     pick(person: Person): void
+
+    markError(person: Person): void
 }
 
-export interface SlackClient {
-    getUserIdByEmail(email: string): string
-    postMessage(channel: string, message: string): void
-}
-
-export class RealPeopleSource implements PeopleDatabase {
+export class RealPeopleSource implements PeopleSource {
     constructor(private sheet: Sheet) {
     }
 
@@ -27,11 +28,20 @@ export class RealPeopleSource implements PeopleDatabase {
         const values = range.getValues();
         const people: Person[] = [];
         for (let i = 0; i < values.length; i++) {
+            let pickCount = values[i][1] || 0;
+            if (values[i][1]) {
+                pickCount = values[i][1]
+            } else {
+                const countRange = this.sheet.getRange(i + 2, 2);
+                countRange.setValue(0);
+                pickCount = 0;
+            }
+
             const person: Person = {
                 spreadsheetRow: i + 2,
                 spreadsheetCol: 2,
                 email: values[i][0].toString(),
-                pickCount: parseInt(values[i][1].toString()),
+                pickCount: parseInt(pickCount.toString()),
             };
 
             people.push(person);
@@ -44,22 +54,66 @@ export class RealPeopleSource implements PeopleDatabase {
         let range = this.sheet.getRange(person.spreadsheetRow, person.spreadsheetCol);
         range.setValue(person.pickCount + 1);
     }
+
+    markError(person: Person): void {
+        let range = this.sheet.getRange(person.spreadsheetRow, person.spreadsheetCol + 1);
+        range.setValue('Error picking this user');
+    }
+}
+
+export interface SlackProfile {
+    real_name: string
+    real_name_normalized: string
+    display_name: string
+    display_name_normalized: string
+    email: string
+    first_name: string
+    last_name: string
+    team: string
+}
+
+export interface SlackUser {
+    id: string
+    team_id: string
+    name: string
+    deleted: boolean
+    real_name: string
+    profile: SlackProfile
+}
+
+export interface GetUserIdByEmailResponse {
+    ok: boolean
+    user?: SlackUser
+    error?: string
+}
+
+export interface SlackClient {
+    getUserIdByEmail(email: string): string
+
+    postMessage(channel: string, message: string): void
 }
 
 export class RealSlackClient implements SlackClient {
-    constructor(private token: string) {
+    constructor(private token: string,
+                private fetch: typeof UrlFetchApp = UrlFetchApp,
+                private logger: typeof Logger = Logger) {
     }
 
     getUserIdByEmail(email: string): string {
-        const resp = UrlFetchApp.fetch(`https://slack.com/api/users.lookupByEmail?token=${this.token}&email=${email}`, {
+        const resp = this.fetch.fetch(`https://slack.com/api/users.lookupByEmail?token=${this.token}&email=${email}`, {
             method: 'get',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
         });
-        Logger.log(resp.getResponseCode());
-        Logger.log(resp.getContentText());
-        return JSON.parse(resp.getContentText()).user.id;
+        this.logger.log(resp.getResponseCode());
+        this.logger.log(resp.getContentText());
+        let json = JSON.parse(resp.getContentText());
+        if (!json.ok) {
+            return '';
+        }
+
+        return json.user.id;
     }
 
     postMessage(channel: string, text: string): void {
@@ -77,17 +131,29 @@ export class RealSlackClient implements SlackClient {
 }
 
 export class StandupMaster {
-    constructor(private slack: SlackClient, private people: PeopleDatabase) {
+    constructor(private slack: SlackClient, private people: PeopleSource) {
     }
 
     assignStandup() {
         const people = this.people.listPeople();
         const masters = weightedChoice(2, people, person => 1 / person.pickCount);
-        const masterIds = masters.map(master => this.slack.getUserIdByEmail(master.email));
-        const userNameList = masterIds.map(id => `<@${id}>`).join(" and ");
-        this.slack.postMessage('C0A2QNDEX', `Hey ${userNameList}, you're scheduled to run standup this week!`);
+        const idsByEmail: { [email: string]: string } = {};
+        masters.forEach(master => idsByEmail[master.email] = this.slack.getUserIdByEmail(master.email));
+        const userNameList = Object.keys(idsByEmail)
+            .filter(email => idsByEmail[email] !== '')
+            .map(email => `<@${idsByEmail[email]}>`).join(" and ");
+
+        this.slack.postMessage(
+            'C0A2QNDEX',
+            `Hey ${userNameList}, you're scheduled to run standup this week!`
+        );
+
         masters.forEach(master => {
-            this.people.pick(master)
+            if (idsByEmail[master.email] === '') {
+                this.people.markError(master);
+            } else {
+                this.people.pick(master)
+            }
         });
     }
 }
@@ -115,7 +181,7 @@ function shuffle<T>(array: T[]) {
 
 // weightedChoice selects a random element from *elements*
 // with probability defined by the passed weightFunc
-function weightedChoice<T>(numElements: number, elements: T[], weightFunc: (element: T) => number) {
+function weightedChoice<T>(numElements: number, elements: T[], weightFunc: (element: T) => number): T[] {
     elements = shuffle(elements);
 
     const weights: number[] = [];
